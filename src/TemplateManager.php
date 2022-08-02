@@ -2,6 +2,13 @@
 
 class TemplateManager
 {
+    //Utilisation de constantes
+    CONST DESTINATION_NAME = '[quote:destination_name]';
+    CONST DESTINATION_LINK = '[quote:destination_link]';
+    CONST QUOTE_SUM_HTML = '[quote:summary_html]';
+    CONST QUOTE_SUM = '[quote:summary]';
+    CONST USER_FIRSTNAME = '[user:first_name]';
+
     public function getTemplateComputed(Template $tpl, array $data)
     {
         if (!$tpl) {
@@ -9,6 +16,7 @@ class TemplateManager
         }
 
         $replaced = clone($tpl);
+
         $replaced->subject = $this->computeText($replaced->subject, $data);
         $replaced->content = $this->computeText($replaced->content, $data);
 
@@ -18,56 +26,39 @@ class TemplateManager
     private function computeText($text, array $data)
     {
         $APPLICATION_CONTEXT = ApplicationContext::getInstance();
+        //Initialisation des variables
+        $quote = null;
+        $destination = null;
+        $site = null;
+        $siteTxt = '';
+        $user  = (isset($data['user'])  and ($data['user']  instanceof User))  ? $data['user']  : $APPLICATION_CONTEXT->getCurrentUser();
+        //On remplit les variables si nécessaire
+        if ((isset($data['quote']) and $data['quote'] instanceof Quote))
+        {
+            $quote = $data['quote'];
+            $site = SiteRepository::getInstance()->getById($quote->siteId);
+            $destination = DestinationRepository::getInstance()->getById($quote->destinationId);
+            $siteTxt = $site->url . '/' . $destination->countryName . '/quote/' . $quote->id;
+        }
+        
+        return $this->searchAndReplaceText($quote, $destination, $user, $text, $siteTxt);
+    }
 
-        $quote = (isset($data['quote']) and $data['quote'] instanceof Quote) ? $data['quote'] : null;
+    private function searchAndReplaceText(?Quote $quote, ?Destination $destination, User $user, $text, $siteTxt)
+    {   
+        if ($destination)
+        {
+            (strpos($text, self::DESTINATION_NAME) !== false) and $text = str_replace(self::DESTINATION_NAME,$destination->countryName,$text);
 
+        }
         if ($quote)
         {
-            $_quoteFromRepository = QuoteRepository::getInstance()->getById($quote->id);
-            $usefulObject = SiteRepository::getInstance()->getById($quote->siteId);
-            $destinationOfQuote = DestinationRepository::getInstance()->getById($quote->destinationId);
-
-            if(strpos($text, '[quote:destination_link]') !== false){
-                $destination = DestinationRepository::getInstance()->getById($quote->destinationId);
-            }
-
-            $containsSummaryHtml = strpos($text, '[quote:summary_html]');
-            $containsSummary     = strpos($text, '[quote:summary]');
-
-            if ($containsSummaryHtml !== false || $containsSummary !== false) {
-                if ($containsSummaryHtml !== false) {
-                    $text = str_replace(
-                        '[quote:summary_html]',
-                        Quote::renderHtml($_quoteFromRepository),
-                        $text
-                    );
-                }
-                if ($containsSummary !== false) {
-                    $text = str_replace(
-                        '[quote:summary]',
-                        Quote::renderText($_quoteFromRepository),
-                        $text
-                    );
-                }
-            }
-
-            (strpos($text, '[quote:destination_name]') !== false) and $text = str_replace('[quote:destination_name]',$destinationOfQuote->countryName,$text);
+            (strpos($text, self::QUOTE_SUM_HTML) !== false) and $text = str_replace(self::QUOTE_SUM_HTML,Quote::renderHtml($quote),$text);
+            (strpos($text, self::QUOTE_SUM) !== false) and $text = str_replace(self::QUOTE_SUM,Quote::render($quote),$text);
         }
-
-        if (isset($destination))
-            $text = str_replace('[quote:destination_link]', $usefulObject->url . '/' . $destination->countryName . '/quote/' . $_quoteFromRepository->id, $text);
-        else
-            $text = str_replace('[quote:destination_link]', '', $text);
-
-        /*
-         * USER
-         * [user:*]
-         */
-        $_user  = (isset($data['user'])  and ($data['user']  instanceof User))  ? $data['user']  : $APPLICATION_CONTEXT->getCurrentUser();
-        if($_user) {
-            (strpos($text, '[user:first_name]') !== false) and $text = str_replace('[user:first_name]'       , ucfirst(mb_strtolower($_user->firstname)), $text);
-        }
-
+        (strpos($text, self::DESTINATION_LINK) !== false) and $text = str_replace(self::DESTINATION_LINK,$siteTxt,$text);
+        (strpos($text, self::USER_FIRSTNAME) !== false) and $text = str_replace(self::USER_FIRSTNAME, ucfirst(mb_strtolower($user->firstname)), $text);
+        
         return $text;
     }
 }
