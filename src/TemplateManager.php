@@ -14,12 +14,9 @@ class TemplateManager
         if (!$tpl) {
             throw new \RuntimeException('no tpl given');
         }
-
         $replaced = clone($tpl);
-
         $replaced->subject = $this->computeText($replaced->subject, $data);
         $replaced->content = $this->computeText($replaced->content, $data);
-
         return $replaced;
     }
 
@@ -32,33 +29,28 @@ class TemplateManager
         $site = null;
         $siteTxt = '';
         $user  = (isset($data['user'])  and ($data['user']  instanceof User))  ? $data['user']  : $APPLICATION_CONTEXT->getCurrentUser();
-        //On remplit les variables si nécessaire
+        $changes = [];
+        //Remplissage des variables
         if ((isset($data['quote']) and $data['quote'] instanceof Quote))
         {
             $quote = $data['quote'];
             $site = SiteRepository::getInstance()->getById($quote->siteId);
-            $destination = DestinationRepository::getInstance()->getById($quote->destinationId);
-            $siteTxt = $site->url . '/' . $destination->countryName . '/quote/' . $quote->id;
+            $siteTxt = $site->url . '/' . DestinationRepository::getInstance()->getById($quote->destinationId)->countryName . '/quote/' . $quote->id;
+            //Passage par un tableau
+            $changes[self::DESTINATION_NAME] = DestinationRepository::getInstance()->getById($quote->destinationId)->countryName;
+            $changes[self::QUOTE_SUM_HTML] = Quote::renderHtml($quote);
+            $changes[self::QUOTE_SUM] = Quote::renderText($quote);
         }
-        
-        return $this->searchAndReplaceText($quote, $destination, $user, $text, $siteTxt);
+        $changes[self::DESTINATION_LINK] = $siteTxt;
+        $changes[self::USER_FIRSTNAME] = ucfirst(mb_strtolower($user->firstname));
+        return $this->replaceText($changes, $text);
     }
-
-    private function searchAndReplaceText(?Quote $quote, ?Destination $destination, User $user, $text, $siteTxt)
+    //Remplissage du template avec le tableau rempli précédemment
+    private function replaceText(Array $changes, $text)
     {   
-        if ($destination)
-        {
-            (strpos($text, self::DESTINATION_NAME) !== false) and $text = str_replace(self::DESTINATION_NAME,$destination->countryName,$text);
-
+        foreach($changes as $key => $value){
+            $text = str_replace($key, $value, $text);
         }
-        if ($quote)
-        {
-            (strpos($text, self::QUOTE_SUM_HTML) !== false) and $text = str_replace(self::QUOTE_SUM_HTML,Quote::renderHtml($quote),$text);
-            (strpos($text, self::QUOTE_SUM) !== false) and $text = str_replace(self::QUOTE_SUM,Quote::render($quote),$text);
-        }
-        (strpos($text, self::DESTINATION_LINK) !== false) and $text = str_replace(self::DESTINATION_LINK,$siteTxt,$text);
-        (strpos($text, self::USER_FIRSTNAME) !== false) and $text = str_replace(self::USER_FIRSTNAME, ucfirst(mb_strtolower($user->firstname)), $text);
-        
         return $text;
     }
 }
